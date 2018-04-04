@@ -27,9 +27,7 @@ import yaml
 import sys, os
 import wishful_agent
 
-__author__ = "Piotr Gawlowicz, Anatolij Zubow"
-__copyright__ = "Copyright (c) 2016, Technische Universität Berlin"
-__version__ = "0.1.0"
+__version__ = "0.0.1"
 
 log = logging.getLogger('wishful_agent.main')
 agent = wishful_agent.Agent()
