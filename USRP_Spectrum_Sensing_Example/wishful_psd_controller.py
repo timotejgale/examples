@@ -31,20 +31,15 @@ import yaml
 import random
 import time
 from scapy.all import *
+import numpy as np
 import wishful_upis as upis
 from wishful_framework import TimeEvent, PktEvent, MovAvgFilter, PeakDetector, Match, Action, Permanance, PktMatch, FieldSelector
-from wishful_module_spectral_scan_ath9k.psd import plotter as psd_plotter
 
-
-__author__ = "Piotr Gawlowicz, Anatolij Zubow"
-__copyright__ = "Copyright (c) 2016, Technische Universität Berlin"
-__version__ = "0.1.0"
-
+__version__ = "0.0.1"
 
 log = logging.getLogger('wishful_controller.main')
 controller = wishful_controller.Controller()
 nodes = []
-
 
 @controller.new_node_callback()
 def new_node(node):
@@ -83,15 +78,24 @@ def main(args):
     # control loop
     loop_cnt = 0
     update_ival = 5
-    sample_ival = 0.05
-    scan_mode = 'background'
-    iface = 'wlan0'
+    iface = 'eno2'
+    gain = "30"
+    spb = "4194304"
+    fftsize = "1024"
+    numofchannel = "13"
+    firstchannel = "2412000000"
+    channelwidth = "20000000"
+    channeloffset = "5000000"
+    bps = "4"
+    freqbegin = "2410000000"
+    mode = "2"
     scand_running = False
-
-    # create plotter object
-    plt = psd_plotter.Plotter()
+    out_file = "/users/timotejg/psd_measurements_%s.csv" % datetime.now().isoformat()
 
     while True:
+        while len(nodes) < 1:
+            gevent.sleep(1)
+
         print("Connected nodes", [str(node.name) for node in nodes])
         loop_cnt += 1
 
@@ -101,38 +105,33 @@ def main(args):
 
             # start scanner daemon
             if not scand_running:
-                print("Starting scanner daemon with params: iface=%s, mode=%s, sample_ival=%d." % (iface, scan_mode, sample_ival))
-                controller.node(nodes[0]).radio.iface("wlan0").scand_start(iface=iface, mode=scan_mode, ival=sample_ival)
+                print("Starting scanner daemon with params:")
+                print("iface=%s, gain=%s, spb=%s, fftsize=%s, numofchannel=%s,\
+                        firstchannel=%s, channelwidth=%s, channeloffset=%s, bps=%s,\
+                        freqbegin=%s, mode=%s." % (iface, gain, spb, fftsize, numofchannel,\
+                                                    firstchannel, channelwidth, channeloffset, bps, freqbegin, mode))
+                controller.node(nodes[0]).radio.iface(iface).scand_start(iface=iface, gain=gain, spb=spb, fftsize=fftsize,\
+                                                                          numofchannel=numofchannel, firstchannel=firstchannel,\
+                                                                          channelwidth=channelwidth, channeloffset=channeloffset,\
+                                                                          bps=bps, freqbegin=freqbegin, mode=mode)
+
                 scand_running = True
 
-            if (loop_cnt % update_ival == 0):
-                if (scan_mode == 'background'):
-                    scan_mode = 'manual'
-                else:
-                    scan_mode = 'background'
-
-                #sample_ival = random.randint(1, update_ival)
-                print("Updating scanner daemon params: iface=%s, mode=%s, sample_ival=%d." % (iface, scan_mode, sample_ival))
-                controller.node(nodes[0]).radio.iface("wlan0").scand_reconf(iface=iface, mode=scan_mode, ival=sample_ival)
-
-
-            print("Reading scanner daemon with params: iface=%s, mode=%s, sample_ival=%d." % (iface, scan_mode, sample_ival))
-            psd_pkts = controller.node(nodes[0]).radio.iface("wlan0").scand_read()
+            psd_pkts = controller.node(nodes[0]).radio.iface(iface).scand_read()
 
             if psd_pkts.any():
                 print("Received PSD pkts of size:")
                 shape = psd_pkts.shape
                 print(shape)
 
-                # update plotter
-                sample_cnt = 0
-                while ( sample_cnt < shape[1] ):
-                    plt.updateplot(psd_pkts[:,sample_cnt])
-                    sample_cnt += 1
-                    gevent.sleep(update_ival/shape[1])
+		# print to file
+                with open(out_file, 'a+') as out_f:
+                    np.savetxt(out_f, psd_pkts, delimiter=",", fmt="%d")
+
             else:
                 print("Received no PSD pkts.")
-                gevent.sleep(update_ival)
+
+            gevent.sleep(update_ival)
 
 
 if __name__ == "__main__":
